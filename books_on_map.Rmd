@@ -1,0 +1,109 @@
+---
+title: "Books on map"
+output:
+  html_document:
+    df_print: paged
+    self_contained: yes
+  pdf_document:
+    latex_engine: xelatex
+editor_options:
+  chunk_output_type: console
+---
+
+## Introduction
+
+The visualization "Books on map" works with the geotagged data on publications compiled in https://github.com/peeter-t2/tidy_ENB. The geotagged data uses the harmonized publisher location information to merge with the placenames within the Geonames database. There are inaccuracies in this solution, future developments can aim to reduce these errors. The visualization uses a plotly interactive graph as the framework.
+
+```{r setup,echo=F}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+```{r setup2, echo=F, warning=F,results='hide', include=FALSE}
+library(here)
+library(data.table)
+library(tidyverse)
+library(plotly)
+library(naniar)
+options(scipen=99999)
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+morecolours <- c("#8dd3c7","#ffffb3","#bebada","#fb8072","#80b1d3","#fdb462","#b3de69","#fccde5","#d9d9d9","#bc80bd","#ccebc5","#ffed6f")
+
+library("rnaturalearth")
+#library("rnaturalearthdata")
+library(sf)
+#library(rgeos)
+#install.packages(c("cowplot", "googleway", "ggplot2", "ggrepel", 
+#"ggspatial", "libwgeom", "sf", "rnaturalearth", "rnaturalearthdata"))
+```
+
+
+### Publication locations
+
+Publication locations have also been joined with geographic information in the GeoNames database. This allows the publication locations also to be displayed on a map. To see the interactive version of the map, use the html overview.
+
+```{r overview works, echo=F, warning=F}
+works_cities <- fread(cmd="unzip -p ENB_works_geotagged.tsv.zip",sep="\t")
+#works_cities <- fread('unzip -p data/publish/tidy_ENB/data/ENB_works.tsv.zip',sep="\t")
+#top publishing locations with gis here.
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+#class(world)
+#ggplot(data = world) +
+#    geom_sf()
+
+options(scipen=5)
+
+worldmap <- ne_countries(scale = 'medium', type = 'map_units',
+                         returnclass = 'sf')
+europe <- worldmap[worldmap$continent == 'Europe',]
+#ggplot() + geom_sf(data = europe) + theme_bw()
+
+
+top_places <- works_cities[,.N,.(koht,V5,V6)][order(-N)]#[1:100]
+plot1 <- ggplot(data = world) +
+  geom_sf(alpha=0.02) +
+  geom_point(data = top_places, aes(x = V6, y = V5,size=N, text=paste0(koht, " (n = ", N, ")")),  
+             shape = 20, color = "darkred") +
+  scale_size(trans="log10") +
+  theme_bw()+
+  labs(x="",y="")# +
+#coord_sf(xlim = c(-100, 78), ylim = c(24.5, 83), expand = FALSE)
+
+plot1
+#ggplotly()
+
+
+top_places_by_time <- works_cities[,decade2:=floor(aeg/10)*10][,.N,.(koht,V5,V6,decade2)][!is.na(decade2)][decade2<2020]#[order(-N)]#[1:100]
+top_places_by_time[,ester:=paste0("https://www.ester.ee/search~S1*est/X?SEARCH=u:(",koht,")&searchscope=1&Da=",decade2,"&Db=",decade2+9,"&m=a")] #&l=est saaks teha eestikeelseks aga siis poleks ka päris see sama siin.
+
+plot2 <- ggplot(data = world) +
+  geom_sf(alpha=0.2) +
+  geom_point(data = top_places_by_time, aes(x = V6, y = V5,size=N, ids= koht, text=paste0(koht, " (n = ", N, ")"),frame=decade2,customdata=ester),  
+             shape = 20, color = "darkred") +
+  #scale_size(trans="log10") +
+  theme_bw()# +
+#coord_sf(xlim = c(-100, 78), ylim = c(24.5, 83), expand = FALSE)
+
+plot2_interactive <- ggplotly(plot2) %>% 
+  animation_opts(
+    frame = 1000, 
+    #transition = 0, 
+    # redraw = FALSE
+  )
+
+library(htmlwidgets)
+onRender(
+  plot2_interactive, "
+  function(el) {
+    el.on('plotly_click', function(d) {
+      var url = d.points[0].customdata;
+      window.open(url);
+    });
+  }
+"
+)
+
+```
+
+
